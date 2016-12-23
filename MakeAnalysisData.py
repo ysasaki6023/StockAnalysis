@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import h5py
 
 # Settings
-NumberOfStocks = 100
+NumberOfStocks = 5
 
 ff = h5py.File("all.hdf5","r")
 print "loaded"
@@ -32,8 +32,10 @@ tops=tops[:NumberOfStocks]
 
 #dd = d.pivot(index="tDatetime",columns="Index",values="Close")
 ##dd = pd.pivot_table(d,index=["Date","Time"],columns="Index",values="Close")
-dd = pd.pivot_table(d,index="wDatetime",columns="Index",values="Close")
-#dd = dd.sort_values(by="wDatetime")
+dd = pd.pivot_table(d,index="tDatetime",columns="Index",values="Close")
+#dd = dd.sort_values(by="tDatetime")
+dd=dd.fillna(method="ffill")
+dd=dd.fillna(method="bfill")
 print dd
 dd.to_csv("test.csv")
 print "done"
