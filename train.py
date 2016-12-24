@@ -172,6 +172,102 @@ class BPTTUpdater(training.StandardUpdater):
         optimizer.update()  # Update the parameters
         #print(dir(self))
         #raw_input()
+"""
+from chainer.dataset import convert
+import copy
+
+from chainer.dataset import convert
+from chainer.dataset import iterator as iterator_module
+from chainer import link
+from chainer import reporter as reporter_module
+from chainer.training import extension
+from chainer import variable
+class myEvaluator(extensions.Evaluator):
+    #def __init__(self, iterator, target, converter=convert.concat_examples,device=None, eval_hook=None, eval_func=None):
+    #    super(extensions.Evaluator, self).__init__(self, iterator, target, converter=converter,device=device, eval_hook=eval_hook, eval_func=eval_func)
+    def evaluate(self):
+        iterator = self._iterators['main']
+        target = self._targets['main']
+        eval_func = self.eval_func or target
+
+        if self.eval_hook:
+            self.eval_hook(self)
+        it = copy.copy(iterator)
+        summary = reporter_module.DictSummary()
+
+        for batch in it:
+            observation = {}
+            with reporter_module.report_scope(observation):
+                in_arrays = self.converter(batch, self.device)
+                if isinstance(in_arrays, tuple):
+                    in_vars = tuple(variable.Variable(x, volatile='on')
+                                    for x in in_arrays)
+                    eval_func(*in_vars)
+                elif isinstance(in_arrays, dict):
+                    in_vars = {key: variable.Variable(x, volatile='on')
+                               for key, x in six.iteritems(in_arrays)}
+                    eval_func(**in_vars)
+                else:
+                    in_var = variable.Variable(in_arrays, volatile='on')
+                    eval_func(in_var)
+            print(observation)
+
+            summary.add(observation)
+
+        return summary.compute_mean()
+
+    def evaluate(self):
+            iterator = self._iterators['main']
+            target = self._targets['main']
+            eval_func = self.eval_func or target
+
+            if self.eval_hook:
+                self.eval_hook(self)
+            it = copy.copy(iterator)
+            summary = reporter_module.DictSummary()
+
+            for batch in it:
+                observation = {}
+                with reporter_module.report_scope(observation):
+                    in_arrays = self.converter(batch, self.device)
+                    if isinstance(in_arrays, tuple):
+                        in_vars = tuple(variable.Variable(x, volatile='on')
+                                        for x in in_arrays)
+                        eval_func(*in_vars)
+                    elif isinstance(in_arrays, dict):
+                        in_vars = {key: variable.Variable(x, volatile='on')
+                                for key, x in six.iteritems(in_arrays)}
+                        eval_func(**in_vars)
+                    else:
+                        in_var = variable.Variable(in_arrays, volatile='on')
+                        eval_func(in_var)
+
+                summary.add(observation)
+
+            return summary.compute_mean()
+
+"""
+
+def myEvalFunc(x,t):
+    print(x.data,t.data)
+    pass
+
+class myClassifier(L.Classifier):
+    def __call__(self, *args):
+        assert len(args) >= 2
+        x = args[:-1]
+        t = args[-1]
+        self.y = None
+        self.loss = None
+        self.accuracy = None
+        self.y = self.predictor(*x)
+        self.loss = self.lossfun(self.y, t)
+        reporter.report({'loss': self.loss}, self)
+        accur = 0.
+        print(self.y)
+        row_input("pose")
+        reporter.report({'Accuracy': accur}, self)
+        return self.loss
 
 def main():
     parser = argparse.ArgumentParser()
@@ -237,7 +333,13 @@ def main():
     eval_model = model.copy()  # Model with shared params and distinct states
     eval_rnn = eval_model.predictor
     eval_rnn.train = False
-    trainer.extend(extensions.Evaluator(test_iter, eval_model, device=args.gpu,eval_hook=lambda _: eval_rnn.reset_state()))
+    #my_eval_model = L.Classifier(eval_rnn,lossfun=chainer.functions.mean_squared_error)
+    eval_rnn.name=None
+    print(eval_rnn.name)
+    print(type(eval_rnn))
+    my_eval_model = myClassifier(eval_rnn)
+    trainer.extend(extensions.Evaluator(test_iter, my_eval_model, device=args.gpu,eval_hook=lambda _: eval_rnn.reset_state()))
+    #trainer.extend(myEvaluator(test_iter, eval_model, device=args.gpu,eval_hook=lambda _: eval_rnn.reset_state()),eval_func=myEvalFunc)
 
     #interval = 10 if args.test else 500
     interval = 10
@@ -250,8 +352,6 @@ def main():
         chainer.serializers.load_npz(args.resume, trainer)
 
     trainer.run()
-
-
 
 if __name__ == '__main__':
     main()
