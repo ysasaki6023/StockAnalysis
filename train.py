@@ -52,13 +52,21 @@ class RNNForLM(chainer.Chain):
 
     def __call__(self, x):
         h1 = self.lb (x)
-        h2 = self.ll0(F.dropout(x, train=self.train))
+        h2 = self.ll0(x)
 
-        h  = self.ls1(F.dropout(x, train=self.train))
-        h  = self.ls2(F.dropout(h, train=self.train))
-        h3 = self.ls3(F.dropout(h, train=self.train))
+        h  = self.ls1(x)
+        h  = self.ls2(h)
+        h3 = self.ls3(h)
 
-        h  = self.lf (F.dropout(h1+h2+h3, train=self.train))
+        h  = self.lf (h1+h2+h3)
+
+        #h2 = self.ll0(F.dropout(x, train=self.train))
+
+        #h  = self.ls1(F.dropout(x, train=self.train))
+        #h  = self.ls2(F.dropout(h, train=self.train))
+        #h3 = self.ls3(F.dropout(h, train=self.train))
+
+        #h  = self.lf (F.dropout(h1+h2+h3, train=self.train))
 
         return h
 
@@ -126,7 +134,7 @@ class ParallelSequentialIterator(chainer.dataset.Iterator):
 # Routine to rewrite the result dictionary of LogReport to add perplexity
 # values
 def compute_RMS(result):
-    print(result)
+    #print(result)
     result['RMS'] = np.sqrt(result['main/loss'])
     result['RMS/nVar'] = np.sqrt(result['main/loss'])/naturalVariation
 
@@ -172,85 +180,6 @@ class BPTTUpdater(training.StandardUpdater):
         optimizer.update()  # Update the parameters
         #print(dir(self))
         #raw_input()
-"""
-from chainer.dataset import convert
-import copy
-
-from chainer.dataset import convert
-from chainer.dataset import iterator as iterator_module
-from chainer import link
-from chainer import reporter as reporter_module
-from chainer.training import extension
-from chainer import variable
-class myEvaluator(extensions.Evaluator):
-    #def __init__(self, iterator, target, converter=convert.concat_examples,device=None, eval_hook=None, eval_func=None):
-    #    super(extensions.Evaluator, self).__init__(self, iterator, target, converter=converter,device=device, eval_hook=eval_hook, eval_func=eval_func)
-    def evaluate(self):
-        iterator = self._iterators['main']
-        target = self._targets['main']
-        eval_func = self.eval_func or target
-
-        if self.eval_hook:
-            self.eval_hook(self)
-        it = copy.copy(iterator)
-        summary = reporter_module.DictSummary()
-
-        for batch in it:
-            observation = {}
-            with reporter_module.report_scope(observation):
-                in_arrays = self.converter(batch, self.device)
-                if isinstance(in_arrays, tuple):
-                    in_vars = tuple(variable.Variable(x, volatile='on')
-                                    for x in in_arrays)
-                    eval_func(*in_vars)
-                elif isinstance(in_arrays, dict):
-                    in_vars = {key: variable.Variable(x, volatile='on')
-                               for key, x in six.iteritems(in_arrays)}
-                    eval_func(**in_vars)
-                else:
-                    in_var = variable.Variable(in_arrays, volatile='on')
-                    eval_func(in_var)
-            print(observation)
-
-            summary.add(observation)
-
-        return summary.compute_mean()
-
-    def evaluate(self):
-            iterator = self._iterators['main']
-            target = self._targets['main']
-            eval_func = self.eval_func or target
-
-            if self.eval_hook:
-                self.eval_hook(self)
-            it = copy.copy(iterator)
-            summary = reporter_module.DictSummary()
-
-            for batch in it:
-                observation = {}
-                with reporter_module.report_scope(observation):
-                    in_arrays = self.converter(batch, self.device)
-                    if isinstance(in_arrays, tuple):
-                        in_vars = tuple(variable.Variable(x, volatile='on')
-                                        for x in in_arrays)
-                        eval_func(*in_vars)
-                    elif isinstance(in_arrays, dict):
-                        in_vars = {key: variable.Variable(x, volatile='on')
-                                for key, x in six.iteritems(in_arrays)}
-                        eval_func(**in_vars)
-                    else:
-                        in_var = variable.Variable(in_arrays, volatile='on')
-                        eval_func(in_var)
-
-                summary.add(observation)
-
-            return summary.compute_mean()
-
-"""
-
-def myEvalFunc(x,t):
-    print(x.data,t.data)
-    pass
 
 class myClassifier(L.Classifier):
     def __call__(self, *args):
@@ -273,7 +202,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--batchsize', '-b', type=int, default=100,
                         help='Number of examples in each mini-batch')
-    parser.add_argument('--bproplen', '-l', type=int, default=35,
+    parser.add_argument('--bproplen', '-l', type=int, default=6,
                         help='Number of words in each mini-batch '
                              '(= length of truncated BPTT)')
     parser.add_argument('--epoch', '-e', type=int, default=1000000,
@@ -314,7 +243,13 @@ def main():
 
     # Prepare an RNNLM model
     rnn = RNNForLM(NumberOfStocks,int(NumberOfStocks/5))
-    model = L.Classifier(rnn,lossfun=chainer.functions.mean_squared_error)
+    #model = L.Classifier(rnn,lossfun=chainer.functions.mean_squared_error)
+    def my_mean_squared_error(x,t):
+        #print(x.shape,t.shape)
+        a= chainer.functions.mean_squared_error(x,t)
+        #print(a.data)
+        return a
+    model = L.Classifier(rnn,lossfun=my_mean_squared_error)
     model.compute_accuracy = False  # we only want the perplexity
     if args.gpu >= 0:
         chainer.cuda.get_device(args.gpu).use()  # make the GPU current
@@ -322,7 +257,8 @@ def main():
 
     # Set up an optimizer
     #optimizer = chainer.optimizers.SGD(lr=1.0)
-    optimizer = chainer.optimizers.Adam(alpha=1e-10)
+    #optimizer = chainer.optimizers.Adam(alpha=1e-10)
+    optimizer = chainer.optimizers.Adam()
     optimizer.setup(model)
     optimizer.add_hook(chainer.optimizer.GradientClipping(args.gradclip))
 
@@ -333,21 +269,15 @@ def main():
     eval_model = model.copy()  # Model with shared params and distinct states
     eval_rnn = eval_model.predictor
     eval_rnn.train = False
-    #my_eval_model = L.Classifier(eval_rnn,lossfun=chainer.functions.mean_squared_error)
-    eval_rnn.name=None
-    print(eval_rnn.name)
-    print(type(eval_rnn))
-    my_eval_model = myClassifier(eval_rnn)
-    trainer.extend(extensions.Evaluator(test_iter, my_eval_model, device=args.gpu,eval_hook=lambda _: eval_rnn.reset_state()))
-    #trainer.extend(myEvaluator(test_iter, eval_model, device=args.gpu,eval_hook=lambda _: eval_rnn.reset_state()),eval_func=myEvalFunc)
+    trainer.extend(extensions.Evaluator(test_iter, eval_model, device=args.gpu,eval_hook=lambda _: eval_rnn.reset_state()))
 
-    #interval = 10 if args.test else 500
     interval = 10
     trainer.extend(extensions.LogReport(postprocess=compute_RMS,trigger=(interval, 'iteration'),log_name="log.dat"))
     trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'RMS','RMS/nVar']), trigger=(interval, 'iteration'))
     trainer.extend(extensions.ProgressBar(update_interval=1 if args.test else 10))
-    trainer.extend(extensions.snapshot())
-    trainer.extend(extensions.snapshot_object(model, 'model_iter_{.updater.iteration}'))
+    trainer.extend(extensions.snapshot(),trigger=(20,"epoch"))
+    trainer.extend(extensions.snapshot_object(model, 'model_iter_{.updater.iteration}',trigger=(20,"epoch")))
+    trainer.extend(extensions.ExponentialShift("alpha",0.5), trigger=(50, "epoch"))
     if args.resume:
         chainer.serializers.load_npz(args.resume, trainer)
 
