@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import h5py
 
 # Settings
-NumberOfStocks = 5
+NumberOfStocks = 50
 
 ff = h5py.File("all.hdf5","r")
 print "loaded"

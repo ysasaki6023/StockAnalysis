@@ -21,7 +21,7 @@ import csv
 
 ####################
 ## Settings
-NumberOfStocks = 5
+NumberOfStocks = 50
 f_train = 0.8
 
 ####################
@@ -33,35 +33,87 @@ class RNNForLM(chainer.Chain):
 
     def __init__(self, n_stocks, n_hidden, train=True):
         super(RNNForLM, self).__init__(
-            lb =L.Linear(n_stocks  , n_stocks),
-            ll0=L.LSTM  (n_stocks  , n_stocks),
-            ls1=L.Linear(n_stocks  , n_hidden),
-            ls2=L.LSTM  (n_hidden  , n_hidden),
-            ls3=L.LSTM  (n_hidden  , n_hidden),
-            ls4=L.Linear(n_hidden  , n_stocks),
+            lb0=L.Linear(n_stocks  , n_stocks, initialW=np.identity(n_stocks), initial_bias=0.),
+            #lb0=L.Linear(n_stocks  , n_stocks),
 
-            lf =L.Linear(n_stocks, n_stocks),
+            lb1=L.Linear(n_stocks  , n_hidden),
+            lb2=L.Linear(n_hidden  , n_hidden),
+            lb3=L.Linear(n_hidden  , n_hidden),
+            lb4=L.Linear(n_hidden  , n_stocks),
+            lb5=L.Linear(n_stocks  , n_stocks),
+
+            ll0=L.Linear(n_stocks  , n_stocks),
+            ll1=L.StatefulGRU  (n_stocks  , n_stocks),
+            ll2=L.StatefulGRU  (n_stocks  , n_stocks),
+            ll3=L.Linear(n_stocks  , n_stocks),
+            ll4=L.StatefulGRU  (n_stocks  , n_stocks),
+            ll5=L.StatefulGRU  (n_stocks  , n_stocks),
+            ll6=L.Linear(n_stocks  , n_stocks),
+
+            ls1=L.Linear(n_stocks  , n_hidden),
+            ls2=L.StatefulGRU  (n_hidden  , n_hidden),
+            ls3=L.StatefulGRU  (n_hidden  , n_hidden),
+            ls4=L.StatefulGRU  (n_hidden  , n_hidden),
+            ls5=L.StatefulGRU  (n_hidden  , n_hidden),
+            ls6=L.StatefulGRU  (n_hidden  , n_hidden),
+            ls7=L.StatefulGRU  (n_hidden  , n_hidden),
+            ls8=L.Linear(n_hidden  , n_stocks),
+
+            #lf0=L.Linear(n_stocks, n_stocks),
+            #lf1=L.Linear(n_stocks, n_stocks),
         )
+        """
         for param in self.params():
             param.data[...] = np.random.uniform(-0.1, 0.1, param.data.shape)
+        """
+
+        #self.lb0.unchain()
+
         self.train = train
 
     def reset_state(self):
         self.ll0.reset_state()
+        self.ll1.reset_state()
+        self.ll2.reset_state()
+        self.ll4.reset_state()
+        self.ll5.reset_state()
         self.ls2.reset_state()
         self.ls3.reset_state()
+        self.ls4.reset_state()
+        self.ls5.reset_state()
+        self.ls6.reset_state()
+        self.ls7.reset_state()
 
     def __call__(self, x):
-        h1 = self.lb (x)
-        h2 = self.ll0(x)
+        #self.lb0.W.unchain_backward()
+        #self.lb0.b.unchain_backward()
 
-        h  = self.ls1(x)
+        h0 = self.lb0(x)
+
+        h  = F.relu(self.lb1(x))
+        h  = F.relu(self.lb2(h))
+        h  = F.relu(self.lb3(h))
+        h  = F.relu(self.lb4(h))
+        h1 = F.relu(self.lb5(h))
+
+        h  = self.ll0(x)
+        h  = self.ll1(h)
+        h  = self.ll2(h)
+        h  = self.ll3(h)
+        h  = self.ll4(h)
+        h  = self.ll5(h)
+        h2 = self.ll6(h)
+
+        h  = F.relu(self.ls1(x))
         h  = self.ls2(h)
         h  = self.ls3(h)
-        h3 = self.ls4(h)
+        h  = self.ls4(h)
+        h  = self.ls5(h)
+        h  = self.ls6(h)
+        h  = self.ls7(h)
+        h3 = F.relu(self.ls8(h))
 
-        h  = self.lf (h1+h2+h3)
-        #h = self.lb (x)
+        h  = h0+h1+h2+h3
 
         return h
 
@@ -212,6 +264,8 @@ def main():
                         help='Resume the training from snapshot')
     parser.add_argument('--test', '-t', default=None,
                         help='Test using the learnt model from snapshot')
+    parser.add_argument('--analysis', '-a', default=None,
+                        help='Analize the learnt model from snapshot')
     parser.set_defaults(test=False)
     parser.add_argument('--unit', '-u', type=int, default=650,
                         help='Number of LSTM units in each layer')
@@ -223,18 +277,16 @@ def main():
     #print infile["data"].value
     #column = np.loadtxt("test.csv",delimiter=",",skiprows=0,usecols=range(1,NumberOfStocks+1))
     data   = np.loadtxt("test.csv",delimiter=",",skiprows=1,usecols=range(1,NumberOfStocks+1))
-    oridata = data[0:-1]
-    #newdata = data[1:]/oridata-1.
-    newdata = data[1:]
+    #oridata = data[0:-1]
+    newdata = data
     data = newdata
     print(data)
     global naturalVariation
-    naturalVariation = np.var(data)
+    naturalVariation = np.var(data[1:]-data[:-1])
     print("naturalVariation={0:e}".format(naturalVariation))
     n_data = len(data)
     data_train = data[:int(n_data*f_train) ].astype(np.float32)
     data_test  = data[ int(n_data*f_train):].astype(np.float32)
-    ori_train  = oridata[:int(n_data*f_train) ].astype(np.float32)
     print("data loaded: #train={0:d}, #test={1:d}".format(len(data_train),len(data_test)))
 
     train_iter = ParallelSequentialIterator(data_train, args.batchsize, repeat=True )
@@ -281,7 +333,14 @@ def main():
     trainer.extend(extensions.ProgressBar(update_interval=1 if args.test else 10))
     trainer.extend(extensions.snapshot(),trigger=(20,"epoch"))
     #trainer.extend(extensions.snapshot_object(model, 'model_iter_{.updater.iteration}',trigger=(20,"epoch")))
-    trainer.extend(extensions.ExponentialShift("alpha",0.5), trigger=(50, "epoch"))
+    trainer.extend(extensions.ExponentialShift("alpha",0.5), trigger=(100, "epoch"))
+    if args.analysis:
+        chainer.serializers.load_npz(args.analysis, trainer)
+        test_model = trainer.updater._optimizers["main"].target.predictor
+        #print(test_model.links.__dir__)
+        import pdb; pdb.set_trace()
+        return
+
     if args.resume:
         chainer.serializers.load_npz(args.resume, trainer)
 
@@ -293,15 +352,13 @@ def main():
         with open("output_train.csv","wa") as f:
             writer = csv.writer(f,lineterminator='\n')
         
-            for x,t,ori in zip(data_train[:-1],data_train[1:],ori_train[1:]):
+            for x,t in zip(data_train[:-1],data_train[1:]):
                 if i%100==0:print(i)
                 i+=1
                 x = cuda.to_gpu(x.reshape(1,x.shape[0]))
                 y = test_model.predictor(x)
-                z = ori
 
-                #writer.writerow([i]+list((y.data)[0])+list(t)+list(z))
-                writer.writerow([i]+list((y.data)[0])+list(t)+list(z))
+                writer.writerow([i]+list((y.data)[0])+list(t))
         return
 
     trainer.run()
