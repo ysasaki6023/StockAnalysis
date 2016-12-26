@@ -17,10 +17,11 @@ import chainer.links as L
 from chainer import training
 from chainer.training import extensions
 from chainer import cuda
+import csv
 
 ####################
 ## Settings
-NumberOfStocks = 100
+NumberOfStocks = 2
 f_train = 0.8
 
 ####################
@@ -33,24 +34,24 @@ class RNNForLM(chainer.Chain):
     def __init__(self, n_stocks, n_hidden, train=True):
         super(RNNForLM, self).__init__(
             lb =L.Linear(n_stocks  , n_stocks),
-            #l1 =L.Linear(n_stocks  , n_hidden),
-            ll0 =L.LSTM  (n_stocks , n_stocks),
-            #l3 =L.Linear(n_hidden  , n_stocks),
-            ls1=L.Linear(n_stocks  , n_hidden),
-            ls2=L.LSTM  (n_hidden  , n_hidden),
-            ls3=L.Linear(n_hidden  , n_stocks),
+            #ll0=L.LSTM  (n_stocks  , n_stocks),
+            #ls1=L.Linear(n_stocks  , n_hidden),
+            #ls2=L.LSTM  (n_hidden  , n_hidden),
+            #ls3=L.Linear(n_hidden  , n_stocks),
 
-            lf =L.Linear(n_stocks, n_stocks),
+            #lf =L.Linear(n_stocks, n_stocks),
         )
         for param in self.params():
             param.data[...] = np.random.uniform(-0.1, 0.1, param.data.shape)
         self.train = train
 
     def reset_state(self):
-        self.ll0.reset_state()
-        self.ls2.reset_state()
+        pass
+        #self.ll0.reset_state()
+        #self.ls2.reset_state()
 
     def __call__(self, x):
+        """
         h1 = self.lb (x)
         h2 = self.ll0(x)
 
@@ -59,14 +60,8 @@ class RNNForLM(chainer.Chain):
         h3 = self.ls3(h)
 
         h  = self.lf (h1+h2+h3)
-
-        #h2 = self.ll0(F.dropout(x, train=self.train))
-
-        #h  = self.ls1(F.dropout(x, train=self.train))
-        #h  = self.ls2(F.dropout(h, train=self.train))
-        #h3 = self.ls3(F.dropout(h, train=self.train))
-
-        #h  = self.lf (F.dropout(h1+h2+h3, train=self.train))
+        """
+        h = self.lb (x)
 
         return h
 
@@ -215,8 +210,8 @@ def main():
                         help='Directory to output the result')
     parser.add_argument('--resume', '-r', default='',
                         help='Resume the training from snapshot')
-    parser.add_argument('--test', action='store_true',
-                        help='Use tiny datasets for quick tests')
+    parser.add_argument('--test', '-t', default=None,
+                        help='Test using the learnt model from snapshot')
     parser.set_defaults(test=False)
     parser.add_argument('--unit', '-u', type=int, default=650,
                         help='Number of LSTM units in each layer')
@@ -239,6 +234,7 @@ def main():
     print("data loaded: #train={0:d}, #test={1:d}".format(len(data_train),len(data_test)))
 
     train_iter = ParallelSequentialIterator(data_train, args.batchsize, repeat=True )
+    eval_iter  = ParallelSequentialIterator(data_train, args.batchsize, repeat=False)
     test_iter  = ParallelSequentialIterator(data_test , args.batchsize, repeat=False)
 
     # Prepare an RNNLM model
@@ -269,17 +265,38 @@ def main():
     eval_model = model.copy()  # Model with shared params and distinct states
     eval_rnn = eval_model.predictor
     eval_rnn.train = False
-    trainer.extend(extensions.Evaluator(test_iter, eval_model, device=args.gpu,eval_hook=lambda _: eval_rnn.reset_state()))
+
+    #trainer.extend(extensions.Evaluator(test_iter, eval_model, device=args.gpu,eval_hook=lambda _: eval_rnn.reset_state()))
+    #trainer.extend(extensions.Evaluator(train_iter, eval_rnn, device=args.gpu,eval_hook=lambda _: eval_rnn.reset_state(),eval_func=myEval))
+    #trainer.extend(extensions.Evaluator(eval_iter, eval_rnn, device=args.gpu,eval_hook=lambda _: eval_rnn.reset_state(),eval_func=myEval))
+    #trainer.extend(extensions.Evaluator(test_iter, eval_rnn, device=args.gpu,eval_hook=lambda _: eval_rnn.reset_state(),eval_func=myEval))
 
     interval = 10
     trainer.extend(extensions.LogReport(postprocess=compute_RMS,trigger=(interval, 'iteration'),log_name="log.dat"))
     trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'RMS','RMS/nVar']), trigger=(interval, 'iteration'))
     trainer.extend(extensions.ProgressBar(update_interval=1 if args.test else 10))
     trainer.extend(extensions.snapshot(),trigger=(20,"epoch"))
-    trainer.extend(extensions.snapshot_object(model, 'model_iter_{.updater.iteration}',trigger=(20,"epoch")))
+    #trainer.extend(extensions.snapshot_object(model, 'model_iter_{.updater.iteration}',trigger=(20,"epoch")))
     trainer.extend(extensions.ExponentialShift("alpha",0.5), trigger=(50, "epoch"))
     if args.resume:
         chainer.serializers.load_npz(args.resume, trainer)
+
+    if args.test:
+        chainer.serializers.load_npz(args.test, trainer)
+        test_model = trainer.updater._optimizers["main"].target
+        i = 0
+
+        with open("output_train.csv","wa") as f:
+            writer = csv.writer(f,lineterminator='\n')
+        
+            for x,t in zip(data_train[:-1],data_train[1:]):
+                if i%100==0:print(i)
+                i+=1
+                x = cuda.to_gpu(x.reshape(1,x.shape[0]))
+                y = test_model.predictor(x)
+
+                writer.writerow([i]+list((y.data)[0])+list(t))
+        return
 
     trainer.run()
 
