@@ -21,7 +21,7 @@ import csv
 
 ####################
 ## Settings
-NumberOfStocks = 2
+NumberOfStocks = 5
 f_train = 0.8
 
 ####################
@@ -34,24 +34,22 @@ class RNNForLM(chainer.Chain):
     def __init__(self, n_stocks, n_hidden, train=True):
         super(RNNForLM, self).__init__(
             lb =L.Linear(n_stocks  , n_stocks),
-            #ll0=L.LSTM  (n_stocks  , n_stocks),
-            #ls1=L.Linear(n_stocks  , n_hidden),
-            #ls2=L.LSTM  (n_hidden  , n_hidden),
-            #ls3=L.Linear(n_hidden  , n_stocks),
+            ll0=L.LSTM  (n_stocks  , n_stocks),
+            ls1=L.Linear(n_stocks  , n_hidden),
+            ls2=L.LSTM  (n_hidden  , n_hidden),
+            ls3=L.Linear(n_hidden  , n_stocks),
 
-            #lf =L.Linear(n_stocks, n_stocks),
+            lf =L.Linear(n_stocks, n_stocks),
         )
         for param in self.params():
             param.data[...] = np.random.uniform(-0.1, 0.1, param.data.shape)
         self.train = train
 
     def reset_state(self):
-        pass
-        #self.ll0.reset_state()
-        #self.ls2.reset_state()
+        self.ll0.reset_state()
+        self.ls2.reset_state()
 
     def __call__(self, x):
-        """
         h1 = self.lb (x)
         h2 = self.ll0(x)
 
@@ -60,8 +58,7 @@ class RNNForLM(chainer.Chain):
         h3 = self.ls3(h)
 
         h  = self.lf (h1+h2+h3)
-        """
-        h = self.lb (x)
+        #h = self.lb (x)
 
         return h
 
@@ -221,7 +218,8 @@ def main():
     #import h5py
     #infile = h5py.File("all.hdf5","r")
     #print infile["data"].value
-    data = np.loadtxt("test.csv",delimiter=",",skiprows=1,usecols=range(1,NumberOfStocks+1))
+    #column = np.loadtxt("test.csv",delimiter=",",skiprows=0,usecols=range(1,NumberOfStocks+1))
+    data   = np.loadtxt("test.csv",delimiter=",",skiprows=1,usecols=range(1,NumberOfStocks+1))
     newdata = data[1:]/data[0:-1]-1.
     data = newdata
     print(data)

@@ -29,8 +29,12 @@ d=d.fillna(method="ffill")
 
 tops=d.groupby("Index").mean().sort_values("Volume",ascending=False)
 tops=tops[:NumberOfStocks]
-tops_index = tops["Index"].unique()
-dd = d[d["Index"]==tops_index]
+#dd = d[d["Index"]==tops.index]
+d["flag"] = 0
+for i in tops.index:
+    print i
+    d.loc[d["Index"] == i,"flag"] = 1
+dd = d[d["flag"]==1]
 
 #dd = d.pivot(index="tDatetime",columns="Index",values="Close")
 ##dd = pd.pivot_table(d,index=["Date","Time"],columns="Index",values="Close")
