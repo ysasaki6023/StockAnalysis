@@ -86,30 +86,32 @@ class RNNForLM(chainer.Chain):
     def __init__(self, n_stocks, n_hidden, n_memory, train=True):
         super(RNNForLM, self).__init__(
             lb0=L.Linear(n_stocks  , n_stocks, initialW=np.identity(n_stocks), initial_bias=0.),
+            #lb0=L.Linear(n_stocks  , n_stocks),
+            kkk=L.StatefulGRU(n_stocks  , n_stocks),
 
-            lb1=L.Linear(n_stocks  , n_hidden),
-            lb2=L.Linear(n_hidden  , n_hidden),
-            lb3=L.Linear(n_hidden  , n_hidden),
-            lb4=L.Linear(n_hidden  , n_stocks),
-            lb5=L.Linear(n_stocks  , n_stocks),
+            #lb1=L.Linear(n_stocks  , n_hidden),
+            #lb2=L.Linear(n_hidden  , n_hidden),
+            #lb3=L.Linear(n_hidden  , n_hidden),
+            #lb4=L.Linear(n_hidden  , n_stocks),
+            #lb5=L.Linear(n_stocks  , n_stocks),
 
 
-            ll0=L.Linear(n_stocks  , n_memory),
-            ll1=L.StatefulGRU  (n_memory  , n_memory),
-            ll2=L.StatefulGRU  (n_memory  , n_stocks),
-            ll3=L.Linear(n_stocks  , n_stocks),
-            ll4=L.StatefulGRU  (n_stocks  , n_memory),
-            ll5=L.StatefulGRU  (n_memory  , n_stocks),
-            ll6=L.Linear(n_stocks  , n_stocks),
+            #ll0=L.Linear(n_stocks  , n_memory),
+            #ll1=L.StatefulGRU  (n_memory  , n_memory),
+            #ll2=L.StatefulGRU  (n_memory  , n_stocks),
+            #ll3=L.Linear(n_stocks  , n_stocks),
+            #ll4=L.StatefulGRU  (n_stocks  , n_memory),
+            #ll5=L.StatefulGRU  (n_memory  , n_stocks),
+            #ll6=L.Linear(n_stocks  , n_stocks),
 
-            ls1=L.Linear(n_stocks  , n_hidden),
-            ls2=L.StatefulGRU  (n_hidden  , n_hidden),
-            ls3=L.StatefulGRU  (n_hidden  , n_hidden),
-            ls4=L.StatefulGRU  (n_hidden  , n_hidden),
-            ls5=L.StatefulGRU  (n_hidden  , n_hidden),
-            ls6=L.StatefulGRU  (n_hidden  , n_hidden),
-            ls7=L.StatefulGRU  (n_hidden  , n_hidden),
-            ls8=L.Linear(n_hidden  , n_stocks)
+            #ls1=L.Linear(n_stocks  , n_hidden),
+            #ls2=L.StatefulGRU  (n_hidden  , n_hidden),
+            #ls3=L.StatefulGRU  (n_hidden  , n_hidden),
+            #ls4=L.StatefulGRU  (n_hidden  , n_hidden),
+            #ls5=L.StatefulGRU  (n_hidden  , n_hidden),
+            #ls6=L.StatefulGRU  (n_hidden  , n_hidden),
+            #ls7=L.StatefulGRU  (n_hidden  , n_hidden),
+            #ls8=L.Linear(n_hidden  , n_stocks)
 
         )
         """
@@ -122,6 +124,7 @@ class RNNForLM(chainer.Chain):
         self.train = train
 
     def reset_state(self):
+        """
         self.ll0.reset_state()
         self.ll1.reset_state()
         self.ll2.reset_state()
@@ -133,14 +136,16 @@ class RNNForLM(chainer.Chain):
         self.ls5.reset_state()
         self.ls6.reset_state()
         self.ls7.reset_state()
+        """
 
     def __call__(self, x):
         #self.lb0.W.unchain_backward()
         #self.lb0.b.unchain_backward()
 
         h0 = self.lb0(x)
-        #h1 = self.kkk(x)
+        h1 = self.kkk(x)
 
+        """
         h  = F.dropout(F.relu(self.lb1(x)),train=self.train)
         h  = F.dropout(F.relu(self.lb2(h)),train=self.train)
         h  = F.dropout(F.relu(self.lb3(h)),train=self.train)
@@ -165,7 +170,8 @@ class RNNForLM(chainer.Chain):
         h3 = F.relu(self.ls8(h))
 
         h  = h0+h1+h2+h3
-        #h  = h0+h1
+        """
+        h  = h0+h1
 
         return h
 
@@ -376,14 +382,30 @@ def main():
     trainer.extend(extensions.LogReport(postprocess=compute_RMS,trigger=(interval, 'iteration'),log_name="log.dat"))
     trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'RMS','RMS/nVar']), trigger=(interval, 'iteration'))
     trainer.extend(extensions.ProgressBar(update_interval=1 if args.test else 10))
-    trainer.extend(extensions.snapshot(),trigger=(20,"epoch"))
+    trainer.extend(extensions.snapshot(),trigger=(1,"epoch"))
     #trainer.extend(extensions.snapshot_object(model, 'model_iter_{.updater.iteration}',trigger=(20,"epoch")))
     trainer.extend(extensions.ExponentialShift("alpha",0.5), trigger=(20, "epoch"))
     if args.analysis:
+        import h5py
         chainer.serializers.load_npz(args.analysis, trainer)
         test_model = trainer.updater._optimizers["main"].target.predictor
-        #print(test_model.links.__dir__)
-        import pdb; pdb.set_trace()
+        with h5py.File(args.analysis+".hdf5","w") as f:
+            test_model.to_cpu()
+
+            f.create_dataset("lin.W.W",data=test_model.lb0.W.data)
+            f.create_dataset("lin.W.b",data=test_model.lb0.b.data)
+            f.create_dataset("GRU.W.W",data=test_model.kkk.W.W.data)
+            f.create_dataset("GRU.W.b",data=test_model.kkk.W.b.data)
+            f.create_dataset("GRU.U.W",data=test_model.kkk.U.W.data)
+            f.create_dataset("GRU.U.b",data=test_model.kkk.U.b.data)
+            f.create_dataset("GRU.U_r.W",data=test_model.kkk.U_r.W.data)
+            f.create_dataset("GRU.U_r.b",data=test_model.kkk.U_r.b.data)
+            f.create_dataset("GRU.U_z.W",data=test_model.kkk.U_z.W.data)
+            f.create_dataset("GRU.U_z.b",data=test_model.kkk.U_z.b.data)
+            f.create_dataset("GRU.W_r.W",data=test_model.kkk.W_r.W.data)
+            f.create_dataset("GRU.W_r.b",data=test_model.kkk.W_r.b.data)
+            f.create_dataset("GRU.W_z.W",data=test_model.kkk.W_z.W.data)
+            f.create_dataset("GRU.W_z.b",data=test_model.kkk.W_z.b.data)
         return
 
     if args.resume:
