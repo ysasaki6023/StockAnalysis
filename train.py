@@ -37,7 +37,8 @@ class RNNForLM(chainer.Chain):
             ll0=L.LSTM  (n_stocks  , n_stocks),
             ls1=L.Linear(n_stocks  , n_hidden),
             ls2=L.LSTM  (n_hidden  , n_hidden),
-            ls3=L.Linear(n_hidden  , n_stocks),
+            ls3=L.LSTM  (n_hidden  , n_hidden),
+            ls4=L.Linear(n_hidden  , n_stocks),
 
             lf =L.Linear(n_stocks, n_stocks),
         )
@@ -48,6 +49,7 @@ class RNNForLM(chainer.Chain):
     def reset_state(self):
         self.ll0.reset_state()
         self.ls2.reset_state()
+        self.ls3.reset_state()
 
     def __call__(self, x):
         h1 = self.lb (x)
@@ -55,7 +57,8 @@ class RNNForLM(chainer.Chain):
 
         h  = self.ls1(x)
         h  = self.ls2(h)
-        h3 = self.ls3(h)
+        h  = self.ls3(h)
+        h3 = self.ls4(h)
 
         h  = self.lf (h1+h2+h3)
         #h = self.lb (x)
@@ -220,7 +223,8 @@ def main():
     #print infile["data"].value
     #column = np.loadtxt("test.csv",delimiter=",",skiprows=0,usecols=range(1,NumberOfStocks+1))
     data   = np.loadtxt("test.csv",delimiter=",",skiprows=1,usecols=range(1,NumberOfStocks+1))
-    newdata = data[1:]/data[0:-1]-1.
+    oridata = data[0:-1]
+    newdata = data[1:]/oridata-1.
     data = newdata
     print(data)
     global naturalVariation
@@ -229,6 +233,7 @@ def main():
     n_data = len(data)
     data_train = data[:int(n_data*f_train) ].astype(np.float32)
     data_test  = data[ int(n_data*f_train):].astype(np.float32)
+    ori_train  = oridata[:int(n_data*f_train) ].astype(np.float32)
     print("data loaded: #train={0:d}, #test={1:d}".format(len(data_train),len(data_test)))
 
     train_iter = ParallelSequentialIterator(data_train, args.batchsize, repeat=True )
@@ -287,13 +292,15 @@ def main():
         with open("output_train.csv","wa") as f:
             writer = csv.writer(f,lineterminator='\n')
         
-            for x,t in zip(data_train[:-1],data_train[1:]):
+            for x,t,ori in zip(data_train[:-1],data_train[1:],ori_train[1:]):
                 if i%100==0:print(i)
                 i+=1
                 x = cuda.to_gpu(x.reshape(1,x.shape[0]))
                 y = test_model.predictor(x)
+                z = ori
 
-                writer.writerow([i]+list((y.data)[0])+list(t))
+                #writer.writerow([i]+list((y.data)[0])+list(t)+list(z))
+                writer.writerow([i]+list((y.data)[0])+list(t)+list(z))
         return
 
     trainer.run()
